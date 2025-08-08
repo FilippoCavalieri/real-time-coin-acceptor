@@ -25,9 +25,20 @@ SemaphoreHandle_t strain_gauge_synch_sem = xSemaphoreCreateBinary();
 SemaphoreHandle_t dimension_sensor_synch_sem = xSemaphoreCreateBinary();
 SemaphoreHandle_t first_servo_synch_sem = xSemaphoreCreateBinary();
 
+QueueHandle_t classifier_weight_queue = xQueueCreate(1, sizeof(uint16_t));
+QueueHandle_t classifier_time_queue = xQueueCreate(1, sizeof(uint16_t));
+QueueHandle_t second_servo_queue = xQueueCreate(1, sizeof(uint16_t));
+QueueHandle_t sender_queue = xQueueCreate(1, sizeof(uint16_t));
 
 bool stopStrainGauge = false;
 SemaphoreHandle_t stopStrainGaugeMutex = xSemaphoreCreateMutex();
+
+enum coins{
+    EURO_2, 
+    CENT_20,
+    CENT_1,
+    NOT_RECOGNIZED
+};
 
 void vPhotoresistorRead(void * params){
     int already_signaled = 0;
@@ -46,7 +57,6 @@ void vPhotoresistorRead(void * params){
         vTaskDelay(pdMS_TO_TICKS(100UL));
     }
 }
-
 
 void vStrainGaugeRead(void * params){
     int counter;
@@ -69,6 +79,11 @@ void vStrainGaugeRead(void * params){
     }
 }
 
+
+void dimensionSensorCalibration(){
+
+}
+
 void vDimensionSensorRead(void * params){
     for(;;){
         bool result = false;
@@ -77,11 +92,12 @@ void vDimensionSensorRead(void * params){
         startTimeChannel = xTaskGetTickCount();
         //printf("DIMENSION SENSOR: wait overlap\n");
         maxDurationChannel = startTimeChannel + CHANNEL_TIMEOUT;
-        while (!result && durationChannel < maxDurationChannel) {
+        while (!result && startTimeOverlap < maxDurationChannel) {
             result = dimensionSensor.getOverlap();
-            //vTaskDelay(pdMS_TO_TICKS(1UL));
             startTimeOverlap = xTaskGetTickCount();
+            //vTaskDelay(pdMS_TO_TICKS(1UL));
         }
+        //startTimeOverlap = xTaskGetTickCount();
         //printf("DIMENSION SENSOR: overlap\n");
         xSemaphoreTake(stopStrainGaugeMutex, portMAX_DELAY);
         stopStrainGauge = true;
@@ -93,17 +109,6 @@ void vDimensionSensorRead(void * params){
         }
         //printf("DIMENSION SENSOR: no overlap\n");
         TickType_t durationOverlap = xTaskGetTickCount() - startTimeOverlap;
-        if(durationOverlap > 135){
-            servo_2.goDegree(4); // 2 euro
-        }
-        else if(durationOverlap > 95){ //20 c
-            servo_2.goDegree(32);
-        }else if(durationOverlap > 20){
-             servo_2.goDegree(60); // 1 c
-        }
-        else{
-            servo_2.goDegree(88);
-        }
         if(durationChannel >= maxDurationChannel ){ //Overlap doesn't occur
             printf("t0\n");
         }else if( durationOverlap <= 10 ){ //Swings occur
@@ -116,8 +121,8 @@ void vDimensionSensorRead(void * params){
     }
 }
 
-
 void vFirstServoAction(void * params){
+    servo_1.goDegree(90);
     for(;;){
         servo_1.goDegree(90);
         xSemaphoreTake(first_servo_synch_sem, portMAX_DELAY);
@@ -126,13 +131,57 @@ void vFirstServoAction(void * params){
     }  
 }
 
+void vClassifier(void * params){
+    uint16_t weight, time, degree, coinValue;
+    for(;;){
+        xQueueReceive(classifier_weight_queue, &weight, portMAX_DELAY);
+        xQueueReceive(classifier_time_queue, &time, portMAX_DELAY);
+
+        if(time > 125){ // 2 euro
+            degree = 4;
+            coinValue = EURO_2;
+        }
+        else if(time > 90){ //20 c
+            degree = 32;
+            coinValue = CENT_20;
+        }else if(time > 0){ // 1 c
+             degree = 60;
+             coinValue = CENT_1;
+        }
+        else{ //not recognized
+            degree = 88;
+            coinValue = NOT_RECOGNIZED;
+        }
+
+        xQueueSend(second_servo_queue, &degree, portMAX_DELAY);
+        xQueueSend(sender_queue, &coinValue, portMAX_DELAY); 
+    }
+    
+}
+
+void vSecondServoAction(void * params){
+    uint16_t degree;
+    servo_2.goDegree(4);
+    for(;;){
+        xQueueReceive(second_servo_queue, &degree, portMAX_DELAY);
+        servo_2.goDegree(degree);
+    }
+}
+
+void vSender(void * params){
+    uint16_t coinValue;
+    for(;;){
+        xQueueReceive(sender_queue, &coinValue, portMAX_DELAY);
+        printf("INSERTED COIN: %d\n", coinValue);
+    }
+}
+
 void initialize_board(){
     stdio_init_all();
 }
 
 int main(){
     initialize_board();
-    servo_2.goDegree(4); //scrivi un costruttore alternativo per il servo per poter specificare anche l'angolo iniziale
     xTaskCreate(vPhotoresistorRead, "Entry section photoresistor's read", 1024, NULL, 10, NULL);
     xTaskCreate(vStrainGaugeRead, "Strain gauge's read", 1024, NULL, 8, NULL);
     xTaskCreate(vDimensionSensorRead, "DimensionSensor's read", 1024, NULL, 7, NULL);
