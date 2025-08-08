@@ -50,7 +50,6 @@ void vPhotoresistorRead(void * params){
             xSemaphoreGive(strain_gauge_synch_sem);
             xSemaphoreGive(dimension_sensor_synch_sem);
             xSemaphoreGive(first_servo_synch_sem);
-            //printf("")
         }
         else if(already_signaled && result > 1000){
             already_signaled = 0;
@@ -61,14 +60,11 @@ void vPhotoresistorRead(void * params){
 
 void vStrainGaugeRead(void * params){
     int counter;
-    printf("string gauge before take\n");
     for(;;){
         xSemaphoreTake(strain_gauge_synch_sem, portMAX_DELAY);
-        
+        printf("STRAIN GAUGE: start\n");
         for(;;){
-            printf("STRAIN GAUGE: start\n");
             xSemaphoreTake(stopStrainGaugeMutex, portMAX_DELAY);
-            printf("b%d",stopStrainGauge);
             if (stopStrainGauge) {
                 stopStrainGauge = false;
                 xSemaphoreGive(stopStrainGaugeMutex);
@@ -77,82 +73,24 @@ void vStrainGaugeRead(void * params){
             xSemaphoreGive(stopStrainGaugeMutex);
             uint16_t result = estensimetro.getWeight();
             printf("w%d\n", result);
-            printf("STRAIN GAUGE: stop\n");
-            vTaskDelay(1);
+            //vTaskDelay(pdMS_TO_TICKS(5UL));
         }
-        
-        
+        printf("STRAIN GAUGE: stop\n");
     }
 }
 
-<<<<<<< HEAD
 
 void dimensionSensorCalibration(){
 
 }
-=======
-// void vDimensionSensorRead(void * params){
-//     for(;;){
-//         bool result = false;
-//         TickType_t startTimeChannel, maxDurationChannel, startTimeOverlap, durationOverlap = 0;
-//         xSemaphoreTake(dimension_sensor_synch_sem, portMAX_DELAY);
-//         startTimeChannel = xTaskGetTickCount();
-//         //printf("DIMENSION SENSOR: wait overlap\n");
-//         maxDurationChannel = startTimeChannel + CHANNEL_TIMEOUT;
-//         while (!result && startTimeOverlap < maxDurationChannel) {
-//             result = dimensionSensor.getOverlap();
-//             vTaskDelay(pdMS_TO_TICKS(10UL));
-//             startTimeOverlap = xTaskGetTickCount();
-//         }
-//         //printf("DIMENSION SENSOR: overlap\n");
-//         xSemaphoreTake(stopStrainGaugeMutex, portMAX_DELAY);
-//         stopStrainGauge = true;
-//         xSemaphoreGive(stopStrainGaugeMutex);
-//         //printf("DIMENSION SENSOR: wait no overlap\n");
-//         while (result) {
-//             result = dimensionSensor.getOverlap();
-//             vTaskDelay(pdMS_TO_TICKS(10UL));
-//         }
-//         //printf("DIMENSION SENSOR: no overlap\n");
-//         durationOverlap = xTaskGetTickCount() - startTimeOverlap;
-//         if(durationOverlap > 135){
-//             servo_2.goDegree(4); // 2 euro
-//         }
-//         else if(durationOverlap > 95){ //20 c
-//             servo_2.goDegree(32);
-//         }else if(durationOverlap > 20){
-//              servo_2.goDegree(60); // 1 c
-//         }
-//         else{
-//             servo_2.goDegree(88);
-//         }
-//         if(startTimeOverlap >= maxDurationChannel ){ //Overlap doesn't occur
-//             printf("t0\n");
-//         }else if( durationOverlap <= 10 ){ //Swings occur
-//             printf("t-100\n");
-//         }
-//         else{
-//             printf("t%d\n", durationOverlap);
-//         }
-//         printf("c%d\n", startTimeOverlap-startTimeChannel);
-//     }
-// }
->>>>>>> 740ce91cdc3950f3f20792535f544814cb05c074
 
 void vDimensionSensorRead(void * params){
     for(;;){
         xSemaphoreTake(dimension_sensor_synch_sem, portMAX_DELAY);
-<<<<<<< HEAD
         startTimeChannel = xTaskGetTickCount();
         //printf("DIMENSION SENSOR: wait overlap\n");
         maxDurationChannel = startTimeChannel + CHANNEL_TIMEOUT;
         while (!result && startTimeOverlap < maxDurationChannel) {
-            result = dimensionSensor.getOverlap();
-            startTimeOverlap = xTaskGetTickCount();
-            //vTaskDelay(pdMS_TO_TICKS(1UL));
-        }
-        //startTimeOverlap = xTaskGetTickCount();
-=======
         TickType_t startTimeChannel = xTaskGetTickCount();
         TickType_t durationChannel = 0;
         bool result = false;
@@ -162,8 +100,8 @@ void vDimensionSensorRead(void * params){
             //vTaskDelay(pdMS_TO_TICKS(1UL));
             durationChannel = xTaskGetTickCount() - startTimeChannel;
         }
+        //startTimeOverlap = xTaskGetTickCount();
         TickType_t startTimeOverlap = xTaskGetTickCount();
->>>>>>> 740ce91cdc3950f3f20792535f544814cb05c074
         //printf("DIMENSION SENSOR: overlap\n");
         xSemaphoreTake(stopStrainGaugeMutex, portMAX_DELAY);
         stopStrainGauge = true;
@@ -175,25 +113,9 @@ void vDimensionSensorRead(void * params){
         }
         //printf("DIMENSION SENSOR: no overlap\n");
         TickType_t durationOverlap = xTaskGetTickCount() - startTimeOverlap;
-<<<<<<< HEAD
         if(durationChannel >= maxDurationChannel ){ //Overlap doesn't occur
-=======
-        if(durationOverlap > 135){
-            servo_2.goDegree(4);
-        }
-        else if(durationOverlap > 98){
-            servo_2.goDegree(32);
-        }
-        else if(durationOverlap > 20){
-            servo_2.goDegree(60);
-        }
-        else{
-            servo_2.goDegree(88);
-        }
-        if(durationChannel >= CHANNEL_TIMEOUT ){
->>>>>>> 740ce91cdc3950f3f20792535f544814cb05c074
             printf("t0\n");
-        }else if( durationOverlap <= 3 ){
+        }else if( durationOverlap <= 10 ){ //Swings occur
             printf("t-100\n");
         }
         else{
@@ -264,12 +186,10 @@ void initialize_board(){
 
 int main(){
     initialize_board();
-<<<<<<< HEAD
     xTaskCreate(vPhotoresistorRead, "Entry section photoresistor's read", 1024, NULL, 10, NULL);
     xTaskCreate(vStrainGaugeRead, "Strain gauge's read", 1024, NULL, 8, NULL);
     xTaskCreate(vDimensionSensorRead, "DimensionSensor's read", 1024, NULL, 7, NULL);
     xTaskCreate(vFirstServoAction, "Entry section blade", 1024, NULL, 9, NULL);
-=======
 
     TaskHandle_t tStrainGauge;
      TaskHandle_t tDimensionSensor;
@@ -288,9 +208,6 @@ int main(){
      vTaskCoreAffinitySet(tPhotoresistor,2);
 
 
->>>>>>> 740ce91cdc3950f3f20792535f544814cb05c074
     vTaskStartScheduler();
-    
-    
     return 0;
 }

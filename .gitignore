@@ -1,2 +1,3 @@
 /build
 pico-sdk
+apps/coin_acceptor_project/optimized_read.cpp
