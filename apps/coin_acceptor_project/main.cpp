@@ -94,11 +94,13 @@ void vDimensionSensorRead(void * params){
         }
         //printf("DIMENSION SENSOR: no overlap\n");
         TickType_t durationOverlap = xTaskGetTickCount() - startTimeOverlap;
-        if(durationOverlap > 130){
-            servo_2.goDegree(4);
+        if(durationOverlap > 135){
+            servo_2.goDegree(4); // 2 euro
         }
-        else if(durationOverlap > 80){
+        else if(durationOverlap > 95){ //20 c
             servo_2.goDegree(32);
+        }else if(durationOverlap > 20){
+             servo_2.goDegree(60); // 1 c
         }
         else{
             servo_2.goDegree(88);
