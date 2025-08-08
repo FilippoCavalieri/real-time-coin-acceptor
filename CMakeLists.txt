@@ -26,14 +26,18 @@ include_directories(
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -finline-functions -O2")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -finline-functions -O2")
 
+
 # Link to Micro-ROS
 link_directories(libmicroros)
 
 # Add student/common modules
-add_subdirectory(apps/common)
-add_subdirectory(apps/01_executor_pub)
-add_subdirectory(apps/02_multithread_pub)
-add_subdirectory(apps/04_pubsub)
-add_subdirectory(apps/05_isr_pub)
-add_subdirectory(apps/06_sensor_pub)
-add_subdirectory(apps/07_cartpole)
+#add_subdirectory(apps/common)
+#add_subdirectory(apps/01_executor_pub)
+#add_subdirectory(apps/02_multithread_pub)
+#add_subdirectory(apps/04_pubsub)
+#add_subdirectory(apps/05_isr_pub)
+#add_subdirectory(apps/06_sensor_pub)
+#add_subdirectory(apps/07_cartpole)
+
+add_subdirectory(apps/coin_acceptor_project)
+add_subdirectory(apps/coin_acceptor_project/calibration)

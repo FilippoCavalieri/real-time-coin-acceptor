@@ -6,6 +6,8 @@ add_executable(01_executor_pub
 # Link against Pico, FreeRTOS, microros, and shared utilities
 target_link_libraries(01_executor_pub
     pico_stdlib
+    hardware_adc
+    hardware_gpio
     FreeRTOS-Kernel FreeRTOS-Kernel-Heap4
     microros
     common_utils
