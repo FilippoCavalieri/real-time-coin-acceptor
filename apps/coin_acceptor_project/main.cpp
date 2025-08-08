@@ -11,22 +11,24 @@
 #include "Fotoresistore.h"
 #include "Estensimetro.h"
 #include "Servo.h"
+#include "DimensionSensor.h"
+
+#define CHANNEL_TIMEOUT 6000
 
 Fotoresistore fotoresistore(26);
 Estensimetro estensimetro(27);
-Servo servo_1(19); //CAMBIA
-Servo servo_2(21); //CAMBIA
+Servo servo_1(19); 
+Servo servo_2(21); 
+DimensionSensor dimensionSensor(10, 12);
 
 SemaphoreHandle_t strain_gauge_synch_sem = xSemaphoreCreateBinary();
-SemaphoreHandle_t speed_sensor_synch_sem = xSemaphoreCreateBinary();
+SemaphoreHandle_t dimension_sensor_synch_sem = xSemaphoreCreateBinary();
 SemaphoreHandle_t first_servo_synch_sem = xSemaphoreCreateBinary();
-SemaphoreHandle_t second_servo_synch_sem_1 = xSemaphoreCreateBinary();
-SemaphoreHandle_t second_servo_synch_sem_2 = xSemaphoreCreateBinary();
 
 
 
-uint16_t max_weight = 0;
-uint16_t overlap_time = 0;
+bool stopStrainGauge = false;
+SemaphoreHandle_t stopStrainGaugeMutex = xSemaphoreCreateMutex();
 
 void vPhotoresistorRead(void * params){
     int already_signaled = 0;
@@ -37,7 +39,7 @@ void vPhotoresistorRead(void * params){
             already_signaled = 1;
             xSemaphoreGive(strain_gauge_synch_sem);
             xSemaphoreGive(first_servo_synch_sem);
-            vTaskDelay(pdMS_TO_TICKS(100UL));
+            xSemaphoreGive(dimension_sensor_synch_sem);
         }
         else if(already_signaled && result > 1000){
             already_signaled = 0;
@@ -50,40 +52,66 @@ void vPhotoresistorRead(void * params){
 void vStrainGaugeRead(void * params){
     int counter;
     for(;;){
-        counter = 0;
         xSemaphoreTake(strain_gauge_synch_sem, portMAX_DELAY);
-        for(int i=0; i < 100; i++){
+        printf("STRAIN GAUGE: start\n");
+        for(;;){
+            xSemaphoreTake(stopStrainGaugeMutex, portMAX_DELAY);
+            if (stopStrainGauge) {
+                stopStrainGauge = false;
+                xSemaphoreGive(stopStrainGaugeMutex);
+                break;
+            }
+            xSemaphoreGive(stopStrainGaugeMutex);
             uint16_t result = estensimetro.getWeight();
-            if(result > 100){
-                printf("STRAIN GAUGE: value: hex: 0x%03x, dec: %d\n", result, result);
-                //
-                counter++;
-            }
-            if(counter == 5){
-                xSemaphoreGive(second_servo_synch_sem_1);
-            }
-            vTaskDelay(pdMS_TO_TICKS(1UL));
+            printf("w%d\n", result);
+            vTaskDelay(pdMS_TO_TICKS(5UL));
         }
-    
         printf("STRAIN GAUGE: stop\n");
-        vTaskDelay(pdMS_TO_TICKS(100UL));
     }
 }
 
-
-//TO-DO
-void vSpeedSensorRead(void * params){
+void vDimensionSensorRead(void * params){
     for(;;){
-        xSemaphoreTake(speed_sensor_synch_sem, portMAX_DELAY);
-        for(int i=0; i < 100; i++){
-            uint16_t result = estensimetro.getWeight();
-            if(result > 100){
-                printf("STRAIN GAUGE: value: hex: 0x%03x, dec: %d\n", result, result);
-            }
-            vTaskDelay(pdMS_TO_TICKS(1UL));
+        xSemaphoreTake(dimension_sensor_synch_sem, portMAX_DELAY);
+        TickType_t startTimeChannel = xTaskGetTickCount();
+        TickType_t durationChannel = 0;
+        bool result = false;
+        printf("DIMENSION SENSOR: wait overlap\n");
+        while (!result && durationChannel < CHANNEL_TIMEOUT) {
+            result = dimensionSensor.getOverlap();
+            //vTaskDelay(pdMS_TO_TICKS(1UL));
+            durationChannel = xTaskGetTickCount() - startTimeChannel;
         }
-        printf("STRAIN GAUGE: stop\n");
-        vTaskDelay(pdMS_TO_TICKS(100UL));
+        TickType_t startTimeOverlap = xTaskGetTickCount();
+        //printf("DIMENSION SENSOR: overlap\n");
+        xSemaphoreTake(stopStrainGaugeMutex, portMAX_DELAY);
+        stopStrainGauge = true;
+        xSemaphoreGive(stopStrainGaugeMutex);
+        //printf("DIMENSION SENSOR: wait no overlap\n");
+        while (result) {
+            result = dimensionSensor.getOverlap();
+            //vTaskDelay(pdMS_TO_TICKS(1UL));
+        }
+        //printf("DIMENSION SENSOR: no overlap\n");
+        TickType_t durationOverlap = xTaskGetTickCount() - startTimeOverlap;
+        if(durationOverlap > 130){
+            servo_2.goDegree(4);
+        }
+        else if(durationOverlap > 80){
+            servo_2.goDegree(32);
+        }
+        else{
+            servo_2.goDegree(88);
+        }
+        if(durationChannel >= CHANNEL_TIMEOUT ){
+            printf("t0\n");
+        }else if( durationOverlap <= 3 ){
+            printf("t-100\n");
+        }
+        else{
+            printf("t%d\n", durationOverlap);
+        }
+        printf("c%d\n", durationChannel);
     }
 }
 
@@ -97,30 +125,17 @@ void vFirstServoAction(void * params){
     }  
 }
 
-
-void vSecondServoAction(void * params){
-    int stack_degrees[4] = {4, 32, 60, 88};
-    int counter = 0;
-    servo_2.goDegree(4);
-    for(;;){
-        xSemaphoreTake(second_servo_synch_sem_1, portMAX_DELAY);
-        //xSemaphoreTake(second_servo_synch_sem_2, portMAX_DELAY);
-        //CONTROLLO
-        servo_2.goDegree(stack_degrees[counter++ % 4]);
-        vTaskDelay(pdMS_TO_TICKS(100UL));
-    }  
-}
-
 void initialize_board(){
     stdio_init_all();
 }
 
 int main(){
     initialize_board();
-    xTaskCreate(vPhotoresistorRead, "Entry section photoresistor's read", 1024, NULL, 1, NULL);
-    xTaskCreate(vStrainGaugeRead, "Strain gauge's read", 1024, NULL, 1, NULL);
-    xTaskCreate(vFirstServoAction, "Entry section blade", 1024, NULL, 1, NULL);
-    xTaskCreate(vSecondServoAction, "Final section slide", 1024, NULL, 1, NULL);
+    servo_2.goDegree(4);
+    xTaskCreate(vPhotoresistorRead, "Entry section photoresistor's read", 1024, NULL, 10, NULL);
+    xTaskCreate(vStrainGaugeRead, "Strain gauge's read", 1024, NULL, 8, NULL);
+    xTaskCreate(vDimensionSensorRead, "DimensionSensor's read", 1024, NULL, 7, NULL);
+    xTaskCreate(vFirstServoAction, "Entry section blade", 1024, NULL, 9, NULL);
     vTaskStartScheduler();
     return 0;
 }
