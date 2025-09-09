@@ -39,5 +39,6 @@ link_directories(libmicroros)
 #add_subdirectory(apps/06_sensor_pub)
 #add_subdirectory(apps/07_cartpole)
 
-add_subdirectory(apps/coin_acceptor_project)
-add_subdirectory(apps/coin_acceptor_project/calibration)
+#add_subdirectory(apps/coin_acceptor_project)
+
+add_subdirectory(apps/my_coin_acceptor)

@@ -1,25 +1,25 @@
-#include "Servo.h"
+#include "../header/ServoActuator.h"
 #include "hardware/pwm.h"
 #include "hardware/clocks.h"
 #include <stdio.h>
 
-extern "C" {
+/*extern "C" {
 #include "debug_uart.h"
 #include "pico_uart_transports.h"
-}
+}*/
 
 #define ROTATE_0 700 //Rotate to 0° position
 #define ROTATE_180 2300
 
-Servo::Servo(uint8_t gp) {
-	xGP = gp;
+ServoActuator::ServoActuator(uint8_t xGP) {
+	this->xGP = xGP;
 
-	gpio_init(gp);
+	gpio_init(xGP);
 
 	//Setup up PWM t
-	gpio_set_function(gp, GPIO_FUNC_PWM);
-	pwm_set_gpio_level(gp, 0);
-	uint slice_num = pwm_gpio_to_slice_num(gp);
+	gpio_set_function(xGP, GPIO_FUNC_PWM);
+	pwm_set_gpio_level(xGP, 0);
+	uint slice_num = pwm_gpio_to_slice_num(xGP);
 
 	// Get clock speed and compute divider for 50 hz
 	uint32_t clk = clock_get_hz(clk_sys);
@@ -45,26 +45,16 @@ Servo::Servo(uint8_t gp) {
 	pwm_set_enabled(slice_num, true);
 }
 
-Servo::~Servo() {
-	// TODO Auto-generated destructor stub
-}
+ServoActuator::~ServoActuator() {}
 
-
-/**
- * move to angle: 0 to 180.
- * @param degree
- */
-void Servo::goDegree(float degree){
-	if (degree > 180.0){
-		return;
-	}
-	if (degree < 0){
+void ServoActuator::goDegree(float degree){
+	if (degree > 180.0 || degree < 0){
 		return;
 	}
 
 	int duty = (((float)(ROTATE_180 - ROTATE_0) / 180.0) * degree) + ROTATE_0;
 
-	uart_printf("PWM for %f deg is %d duty\n", degree, duty);
+	printf("PWM for %f deg is %d duty\n", degree, duty);
+	//uart_printf("PWM for %f deg is %d duty\n", degree, duty);
 	pwm_set_gpio_level(xGP, duty);
-
 }

@@ -8,11 +8,13 @@ add_executable(calibration
 )
 
 # Link against Pico, FreeRTOS, microros, and shared utilities
-target_link_libraries(calibration
+target_link_libraries(calibration PRIVATE
     pico_stdlib
+    common_utils
     hardware_adc
     hardware_gpio
     hardware_pwm
+    hardware_uart
     FreeRTOS-Kernel FreeRTOS-Kernel-Heap4
     microros
 )
@@ -20,6 +22,13 @@ target_link_libraries(calibration
 # Configure Pico IO settings
 pico_enable_stdio_usb(calibration 1)
 pico_enable_stdio_uart(calibration 0)
+
+# Compile definitions for Pico config
+target_compile_definitions(calibration PRIVATE
+    PICO_UART_ENABLE_CRLF_SUPPORT=0
+    PICO_STDIO_ENABLE_CRLF_SUPPORT=0
+    PICO_STDIO_DEFAULT_CRLF=0
+)
 
 # Set UF2 output directory
 set_target_properties(calibration PROPERTIES
