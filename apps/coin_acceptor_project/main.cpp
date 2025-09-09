@@ -8,23 +8,23 @@
 #include "hardware/gpio.h"
 #include "hardware/adc.h"
 
-#include <rcl/rcl.h>
-#include <std_msgs/msg/int32.h>
-#include <rclc/rclc.h>
-#include <rclc/executor.h>
-#include <rmw_microros/rmw_microros.h>
-extern "C" {
-#include "debug_uart.h"
-#include "pico_uart_transports.h"
-}
+// #include <rcl/rcl.h>
+// #include <std_msgs/msg/int32.h>
+// #include <rclc/rclc.h>
+// #include <rclc/executor.h>
+// #include <rmw_microros/rmw_microros.h>
+// extern "C" {
+// //#include "debug_uart.h"
+// #include "pico_uart_transports.h"
+// }
 
 #include "Fotoresistore.h"
 #include "Estensimetro.h"
 #include "Servo.h"
 #include "DimensionSensor.h"
 
-#define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){uart_printf("Failed status on line %d: %d. Aborting.\n",__LINE__,(int)temp_rc);vTaskDelete(NULL);}}
-#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){uart_printf("Failed status on line %d: %d. Continuing.\n",__LINE__,(int)temp_rc);}}
+// #define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){printf("Failed status on line %d: %d. Aborting.\n",__LINE__,(int)temp_rc);vTaskDelete(NULL);}}
+// #define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){printf("Failed status on line %d: %d. Continuing.\n",__LINE__,(int)temp_rc);}}
 
 #define CHANNEL_TIMEOUT 6000
 
@@ -41,10 +41,12 @@ SemaphoreHandle_t first_servo_synch_sem = xSemaphoreCreateBinary();
 QueueHandle_t classifier_weight_queue = xQueueCreate(1, sizeof(uint16_t));
 QueueHandle_t classifier_time_queue = xQueueCreate(1, sizeof(uint16_t));
 QueueHandle_t second_servo_queue = xQueueCreate(1, sizeof(uint16_t));
-QueueHandle_t sender_queue = xQueueCreate(1, sizeof(uint16_t));
+// QueueHandle_t sender_queue = xQueueCreate(1, sizeof(uint16_t));
 
 bool stopStrainGauge = false;
 SemaphoreHandle_t stopStrainGaugeMutex = xSemaphoreCreateMutex();
+
+uint16_t light_threshold = 0;
 
 enum coins{
     EURO_2, 
@@ -53,20 +55,20 @@ enum coins{
     NOT_RECOGNIZED
 };
 
-rcl_publisher_t publisher;
+//rcl_publisher_t publisher;
 
 void vPhotoresistorRead(void * params){
     int already_signaled = 0;
     for(;;){
         uint16_t result = fotoresistore.getLight();
-        //printf("PHOTORESISTOR: Read value: %d\n", result, result);
-        if(result < 1000){
+        printf("PHOTORESISTOR: Read value: %d\n", result, result);
+        if(result < light_threshold){
             vTaskDelay(pdMS_TO_TICKS(500UL));
             xSemaphoreGive(strain_gauge_synch_sem);
             xSemaphoreGive(dimension_sensor_synch_sem);
             xSemaphoreGive(first_servo_synch_sem);
         }
-        vTaskDelay(pdMS_TO_TICKS(100UL));
+        vTaskDelay(pdMS_TO_TICKS(500UL));
     }
 }
 
@@ -96,11 +98,6 @@ void vStrainGaugeRead(void * params){
     }
 }
 
-
-void dimensionSensorCalibration(){
-
-}
-
 void vDimensionSensorRead(void * params){
     for(;;){
         xSemaphoreTake(dimension_sensor_synch_sem, portMAX_DELAY);
@@ -127,14 +124,14 @@ void vDimensionSensorRead(void * params){
         TickType_t durationOverlap = xTaskGetTickCount() - startTimeOverlap;
         xQueueSend(classifier_time_queue, &durationOverlap, portMAX_DELAY);
         if(durationChannel >= CHANNEL_TIMEOUT ){ //Overlap doesn't occur
-            uart_printf("t0\n");
+            printf("t0\n");
         }else if( durationOverlap <= 10 ){ //Swings occur
-            uart_printf("t-100\n");
+            printf("t-100\n");
         }
         else{
-            uart_printf("t%d\n", durationOverlap);
+            printf("t%u\n", durationOverlap);
         }
-        uart_printf("c%d\n", durationChannel);
+        printf("c%u\n", durationChannel);
     }
 }
 
@@ -171,7 +168,7 @@ void vClassifier(void * params){
         }
 
         xQueueSend(second_servo_queue, &degree, portMAX_DELAY);
-        xQueueSend(sender_queue, &coinValue, portMAX_DELAY); 
+        //xQueueSend(sender_queue, &coinValue, portMAX_DELAY); 
     }
     
 }
@@ -185,56 +182,57 @@ void vSecondServoAction(void * params){
     }
 }
 
-void vSender(void * params){
-    uint16_t coinValue;
-    std_msgs__msg__Int32 msg;
-    msg.data = 0;
-    for(;;){
-        xQueueReceive(sender_queue, &coinValue, portMAX_DELAY);
-        msg.data = coinValue;
-        RCSOFTCHECK(rcl_publish(&publisher, &msg, NULL));
-        uart_printf("INSERTED COIN: %d\n", coinValue);
-    }
-}
+// void vSender(void * params){
+//     uint16_t coinValue;
+//     std_msgs__msg__Int32 msg;
+//     msg.data = 0;
+//     for(;;){
+//         xQueueReceive(sender_queue, &coinValue, portMAX_DELAY);
+//         msg.data = coinValue;
+//         RCSOFTCHECK(rcl_publish(&publisher, &msg, NULL));
+//         printf("INSERTED COIN: %d\n", coinValue);
+//     }
+// }
 
 void initialize_board(){
-    //stdio_init_all();
-    initialize_debug_uart();
+    stdio_init_all();
+    uint16_t base_light_value = fotoresistore.getLight();
+    light_threshold = base_light_value * 0.6;
 }
 
-void initialize_micro_ros(){
-    rmw_uros_set_custom_transport(
-		true,
-		NULL,
-		pico_serial_transport_open,
-		pico_serial_transport_close,
-		pico_serial_transport_write,
-		pico_serial_transport_read
-	);
+// void initialize_micro_ros(){
+//     rmw_uros_set_custom_transport(
+// 		true,
+// 		NULL,
+// 		pico_serial_transport_open,
+// 		pico_serial_transport_close,
+// 		pico_serial_transport_write,
+// 		pico_serial_transport_read
+// 	);
 
-    rcl_allocator_t allocator = rcl_get_default_allocator();
-	rclc_support_t support;
+//     rcl_allocator_t allocator = rcl_get_default_allocator();
+// 	rclc_support_t support;
 
-	// create init options
-	rcl_init_options_t init_options = rcl_get_zero_initialized_init_options();
-	RCCHECK(rcl_init_options_init(&init_options, allocator));
-	RCCHECK(rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator));
+// 	// create init options
+// 	rcl_init_options_t init_options = rcl_get_zero_initialized_init_options();
+// 	RCCHECK(rcl_init_options_init(&init_options, allocator));
+// 	RCCHECK(rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator));
 	
-	// create node
-	rcl_node_t node;
-	RCCHECK(rclc_node_init_default(&node, "publisher_node", "", &support));
+// 	// create node
+// 	rcl_node_t node;
+// 	RCCHECK(rclc_node_init_default(&node, "publisher_node", "", &support));
 
-	// create publisher
-	RCCHECK(rclc_publisher_init_default(
-		&publisher,
-		&node,
-		ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-		"coinValuePublisher"));
-}
+// 	// create publisher
+// 	RCCHECK(rclc_publisher_init_default(
+// 		&publisher,
+// 		&node,
+// 		ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+// 		"coinValuePublisher"));
+// }
 
 int main(){
     initialize_board();
-    initialize_micro_ros();
+    // initialize_micro_ros();
     
     TaskHandle_t tStrainGauge;
     TaskHandle_t tDimensionSensor;
@@ -251,7 +249,7 @@ int main(){
     xTaskCreate(vFirstServoAction, "Entry section blade", 1024, NULL, 2, &tFirstServo);
     xTaskCreate(vClassifier, "Classifier", 1024, NULL, 3, &tClassifier);
     xTaskCreate(vSecondServoAction, "Final section slide", 1024, NULL, 3, &tSecondServo);
-    xTaskCreate(vSender, "Entry section blade", 1024, NULL, 1, &tSender);
+    // xTaskCreate(vSender, "Entry section blade", 1024, NULL, 1, &tSender);
     
     /*
     vTaskCoreAffinitySet(tStrainGauge,3);

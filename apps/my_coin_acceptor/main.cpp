@@ -46,6 +46,8 @@ QueueHandle_t senderQueue = xQueueCreate(1, sizeof(uint16_t));
 bool stopStrainGauge = false;
 SemaphoreHandle_t stopStrainGaugeMutex = xSemaphoreCreateMutex();
 
+uint16_t light_threshold = 0;
+
 enum coins{
     EURO_2, 
     CENT_20,
@@ -59,11 +61,12 @@ void vPhotoresistorRead(void * params){
     for(;;){
         uint16_t result = photoresistor.getLight();
         printf("PHOTORESISTOR: Read value: %d\n", result, result);
-        if(result < 1000){
-            vTaskDelay(pdMS_TO_TICKS(500UL)); //wait for coin fall on the blade
+        if(result < light_threshold){
+            vTaskDelay(pdMS_TO_TICKS(500UL)); //wait for coin lay on the blade
             xSemaphoreGive(strainGaugeSynchSem);
             xSemaphoreGive(LM393CoupleSynchSem);
             xSemaphoreGive(bladeServoSynchSem);
+            vTaskDelay(pdMS_TO_TICKS(500UL)); //wait for coin fall down
         }
         vTaskDelay(pdMS_TO_TICKS(100UL));
     }
@@ -104,6 +107,7 @@ void vLM393CoupleRead(void * params){
     for(;;){
         xSemaphoreTake(LM393CoupleSynchSem, portMAX_DELAY);
         channelStartTime = xTaskGetTickCount();
+        channelDuration = 0;
         while(!result && channelDuration < CHANNEL_TIMEOUT) {
             result = LM393Couple.getOverlap();
             channelDuration = xTaskGetTickCount() - channelStartTime;
@@ -130,10 +134,10 @@ void vLM393CoupleRead(void * params){
         }
         else{
             //uart_printf("t%d\n", overlapDuration);
-            printf("t%d\n", overlapDuration);
+            printf("t%u\n", overlapDuration);
         }
         //uart_printf("c%d\n", durationChannel);
-        printf("c%d\n", channelDuration);
+        printf("c%u\n", channelDuration);
     }
 }
 
@@ -198,6 +202,8 @@ void vSlideServoAction(void * params){
 
 void initialize_board(){
     stdio_init_all();
+    uint16_t base_light_value = photoresistor.getLight();
+    light_threshold = base_light_value * 0.6;
     //initialize_debug_uart();
 }
 
@@ -251,7 +257,6 @@ int main(){
     xTaskCreate(vClassifier, "Classifier", 1024, NULL, 3, &tClassifier);
     xTaskCreate(vSlideServoAction, "Final section slide's action", 1024, NULL, 3, &tSlideServo);
     //xTaskCreate(vSender, "Entry section blade", 1024, NULL, 1, &tSender);
-    
     
     //vTaskCoreAffinitySet(tStrainGauge,1);
     //vTaskCoreAffinitySet(tLM393Couple,2);

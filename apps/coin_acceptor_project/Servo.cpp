@@ -3,10 +3,10 @@
 #include "hardware/clocks.h"
 #include <stdio.h>
 
-extern "C" {
-#include "debug_uart.h"
-#include "pico_uart_transports.h"
-}
+// extern "C" {
+// #include "debug_uart.h"
+// #include "pico_uart_transports.h"
+// }
 
 #define ROTATE_0 700 //Rotate to 0° position
 #define ROTATE_180 2300
@@ -64,7 +64,7 @@ void Servo::goDegree(float degree){
 
 	int duty = (((float)(ROTATE_180 - ROTATE_0) / 180.0) * degree) + ROTATE_0;
 
-	uart_printf("PWM for %f deg is %d duty\n", degree, duty);
+	printf("PWM for %f deg is %d duty\n", degree, duty);
 	pwm_set_gpio_level(xGP, duty);
 
 }

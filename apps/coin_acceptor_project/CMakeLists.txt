@@ -10,13 +10,10 @@ add_executable(calibration
 # Link against Pico, FreeRTOS, microros, and shared utilities
 target_link_libraries(calibration PRIVATE
     pico_stdlib
-    common_utils
     hardware_adc
     hardware_gpio
     hardware_pwm
-    hardware_uart
     FreeRTOS-Kernel FreeRTOS-Kernel-Heap4
-    microros
 )
 
 # Configure Pico IO settings

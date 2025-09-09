@@ -3,7 +3,7 @@ import numpy
 import matplotlib.pyplot as plt
 from scipy import stats  # Needed for confidence interval calculations
 
-MAX_ITER = 15
+MAX_ITER = 85
 
 
 def plot_histograms(weights, times):
@@ -32,7 +32,7 @@ def plot_histograms(weights, times):
         if w_series:
             plt.plot(w_series, marker='o', label=f'Series {i+1}')
 
-    plt.title('Temporal Series of Weights (15 Iterations)')
+    plt.title(f'Temporal Series of Weights ({MAX_ITER} Iterations)')
     plt.xlabel('Sample Index (within iteration)')
     plt.ylabel('Weight')
     plt.ylim(top=300)  # Imposta il limite massimo dell'asse Y
@@ -82,26 +82,35 @@ def main():
     weights = [[] for _ in range(MAX_ITER)]
     times = [0 for _ in range(MAX_ITER)]
 
+    # Ask the user for the coin type
+    coin_type = input(f'Enter the coin type for the coins you gonna insert (e.g., 1c, 2c, 5c): ')
+
     for i in range(MAX_ITER):
+        print(f'Insert coin {i + 1} on {MAX_ITER}')
         while True:
             packet = str(ser.readline().decode('utf-8')).strip()
-            print(f'Pacchetto ricevuto: "{packet}"')
+            #print(f'Pacchetto ricevuto: "{packet}"')
 
             if not packet:
                 continue
 
             pType = packet[0]
-            try:
-                pValue = int(packet[1:])
-            except ValueError:
-                print("Errore: valore non numerico")
-                continue
-
             if pType == 'w':
+                pValue = int(packet[1:])
                 weights[i].append(pValue)
             elif pType == 't':
+                pValue = int(packet[1:])
                 times[i] = pValue
                 break
+
+        # Write the time data to the corresponding file for the coin type
+        with open(f'calibration/results/{coin_type}_times.txt', 'a') as f:
+            f.write(f'{times[i]}\n')
+
+        # Write the weight data to the corresponding file for the coin type
+        with open(f'calibration/results/{coin_type}_weights.txt', 'a') as f:
+            for weight in weights[i]:
+                f.write(f'{weight}\n')
 
     plot_histograms(weights, times)
 
