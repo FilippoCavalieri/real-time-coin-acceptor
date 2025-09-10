@@ -15,8 +15,8 @@ target_link_libraries(coin_acceptor_microros
     hardware_gpio
     hardware_pwm
     hardware_uart
-    microros
     FreeRTOS-Kernel FreeRTOS-Kernel-Heap4
+    microros
 )
 
 # Configure Pico IO settings

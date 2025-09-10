@@ -1,6 +1,8 @@
 #include "FreeRTOS.h"
+#include "FreeRTOSConfig.h"
 #include "task.h"
 #include "semphr.h"
+#include "queue.h"
 
 #include <stdio.h>
 
@@ -9,6 +11,7 @@
 #include "hardware/adc.h"
 
 #include <rcl/rcl.h>
+#include <rcl/error_handling.h>
 #include <std_msgs/msg/int32.h>
 #include <rclc/rclc.h>
 #include <rclc/executor.h>
@@ -193,30 +196,21 @@ void vSender(void * params){
     std_msgs__msg__Int32 msg;
     msg.data = 0;
     for(;;){
+        uart_printf("INSERTED COIN: %d\n", coinValue);
         xQueueReceive(senderQueue, &coinValue, portMAX_DELAY);
         msg.data = coinValue;
         RCSOFTCHECK(rcl_publish(&publisher, &msg, NULL));
-        uart_printf("INSERTED COIN: %d\n", coinValue);
     }
 }
 
 void initialize_board(){
-    //stdio_init_all();
     uint16_t base_light_value = photoresistor.getLight();
     light_threshold = base_light_value * 0.6;
     initialize_debug_uart();
+    sleep_ms(5000);
 }
 
-void initialize_micro_ros(){
-    rmw_uros_set_custom_transport(
-		true,
-		NULL,
-		pico_serial_transport_open,
-		pico_serial_transport_close,
-		pico_serial_transport_write,
-		pico_serial_transport_read
-	);
-
+void vMainTask(void * args) {
     rcl_allocator_t allocator = rcl_get_default_allocator();
 	rclc_support_t support;
 
@@ -235,12 +229,6 @@ void initialize_micro_ros(){
 		&node,
 		ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
 		"coinValuePublisher"));
-}
-
-int main(){
-    initialize_board();
-    uart_printf("Between initializations\n");
-    initialize_micro_ros();
     
     TaskHandle_t tPhotoresistor;
     TaskHandle_t tBladeServo;
@@ -250,7 +238,6 @@ int main(){
     TaskHandle_t tSlideServo;
     TaskHandle_t tSender;
     
-    uart_printf("Paperino\n");
     xTaskCreate(vPhotoresistorRead, "Entry section photoresistor's read", 1024, NULL, 2, &tPhotoresistor);
     xTaskCreate(vBladeServoAction, "Entry section blade's action", 1024, NULL, 2, &tBladeServo);
     xTaskCreate(vStrainGaugeRead, "Strain gauge's read", 1024, NULL, 3, &tStrainGauge);
@@ -258,8 +245,38 @@ int main(){
     xTaskCreate(vClassifier, "Classifier", 1024, NULL, 3, &tClassifier);
     xTaskCreate(vSlideServoAction, "Final section slide's action", 1024, NULL, 3, &tSlideServo);
     xTaskCreate(vSender, "Data sender", 1024, NULL, 1, &tSender);
+
+    while(1){
+        vTaskDelay(pdMS_TO_TICKS(10));  // Yield to other tasks
+	}
+
+	// free resources
+	RCCHECK(rcl_publisher_fini(&publisher, &node));
+
+	RCCHECK(rcl_node_fini(&node));
+
+  	vTaskDelete(NULL);
+}
+
+int main(){
+    initialize_board();
+    uart_printf("Between initializations\n");
+
+    rmw_uros_set_custom_transport(
+		true,
+		NULL,
+		pico_serial_transport_open,
+		pico_serial_transport_close,
+		pico_serial_transport_write,
+		pico_serial_transport_read
+	);
     
-    uart_printf("Pluto\n");
+    TaskHandle_t mainTask;
+
+    xTaskCreate(vMainTask, "Main Task", 5000, NULL, 1, &mainTask);
+    // Bind the task to a single core
+	vTaskCoreAffinitySet(mainTask, 1);
+    
     //vTaskCoreAffinitySet(tStrainGauge,1);
     //vTaskCoreAffinitySet(tLM393Couple,2);
     //vTaskCoreAffinitySet(tBladeServo,3);
