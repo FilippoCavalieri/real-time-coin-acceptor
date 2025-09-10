@@ -10,9 +10,12 @@ add_executable(my_coin_acceptor
 # Link against Pico, FreeRTOS, microros, and shared utilities
 target_link_libraries(my_coin_acceptor
     pico_stdlib
+    common_utils
     hardware_adc
     hardware_gpio
     hardware_pwm
+    hardware_uart
+    microros
     FreeRTOS-Kernel FreeRTOS-Kernel-Heap4
 )
 
