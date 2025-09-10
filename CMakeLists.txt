@@ -36,9 +36,8 @@ add_subdirectory(apps/common)
 #add_subdirectory(apps/02_multithread_pub)
 #add_subdirectory(apps/04_pubsub)
 #add_subdirectory(apps/05_isr_pub)
-#add_subdirectory(apps/06_sensor_pub)
+add_subdirectory(apps/06_sensor_pub)
 #add_subdirectory(apps/07_cartpole)
 
-#add_subdirectory(apps/coin_acceptor_project)
-
-add_subdirectory(apps/my_coin_acceptor)
+add_subdirectory(apps/coin_acceptor_noros)
+add_subdirectory(apps/coin_acceptor_microros)
