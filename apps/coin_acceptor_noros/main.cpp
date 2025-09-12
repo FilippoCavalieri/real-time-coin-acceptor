@@ -36,10 +36,10 @@ SemaphoreHandle_t stopStrainGaugeMutex = xSemaphoreCreateMutex();
 uint16_t light_threshold = 0;
 
 enum coins{
-    EURO_2, 
-    CENT_20,
-    CENT_1,
-    NOT_RECOGNIZED
+    EURO_2 = 3, 
+    CENT_20 = 2,
+    CENT_1 = 1,
+    NOT_RECOGNIZED = 0
 };
 
 void vPhotoresistorRead(void * params){
@@ -140,11 +140,11 @@ void vClassifier(void * params){
         xQueueReceive(classifierWeightQueue, &weight, portMAX_DELAY);
         xQueueReceive(classifierTimeQueue, &time, portMAX_DELAY);
 
-        if(time > 125){ // 2 euro
+        if(time > 100){ // 2 euro
             degree = 4;
             coinValue = EURO_2;
         }
-        else if(time > 90){ //20 c
+        else if(time > 100){ //20 c
             degree = 32;
             coinValue = CENT_20;
         }else if(time > 0){ // 1 c

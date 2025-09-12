@@ -144,10 +144,10 @@ void main(void){
 	rmw_uros_set_custom_transport(
 		true,
 		NULL,
-		pico_serial_transport_open,
-		pico_serial_transport_close,
-		pico_serial_transport_write,
-		pico_serial_transport_read
+		pico_usb_transport_open,
+		pico_usb_transport_close,
+		pico_usb_transport_write,
+		pico_usb_transport_read
 	);
 
 	// Create queue

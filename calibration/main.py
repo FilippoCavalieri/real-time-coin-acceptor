@@ -3,7 +3,7 @@ import numpy
 import matplotlib.pyplot as plt
 from scipy import stats  # Needed for confidence interval calculations
 
-MAX_ITER = 85
+MAX_ITER = 15
 
 
 def plot_histograms(weights, times):
@@ -78,7 +78,7 @@ def plot_histograms(weights, times):
 
 def main():
     print("Inizio calibrazione")
-    ser = serial.Serial('/dev/ttyACM0')
+    ser = serial.Serial('/dev/ttyUSB0', baudrate=115200)
     weights = [[] for _ in range(MAX_ITER)]
     times = [0 for _ in range(MAX_ITER)]
 
@@ -88,7 +88,7 @@ def main():
     for i in range(MAX_ITER):
         print(f'Insert coin {i + 1} on {MAX_ITER}')
         while True:
-            packet = str(ser.readline().decode('utf-8')).strip()
+            packet = str(ser.readline().decode('ascii')).strip()
             #print(f'Pacchetto ricevuto: "{packet}"')
 
             if not packet:

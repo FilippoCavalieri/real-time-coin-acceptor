@@ -29,7 +29,7 @@ extern "C" {
 #define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){uart_printf("Failed status on line %d: %d. Aborting.\n",__LINE__,(int)temp_rc);vTaskDelete(NULL);}}
 #define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){uart_printf("Failed status on line %d: %d. Continuing.\n",__LINE__,(int)temp_rc);}}
 
-#define CHANNEL_TIMEOUT 6000
+#define CHANNEL_TIMEOUT pdMS_TO_TICKS(600)
 
 PhotoresistorSensor photoresistor(26);
 ServoActuator bladeServo(19);
@@ -52,10 +52,10 @@ SemaphoreHandle_t stopStrainGaugeMutex = xSemaphoreCreateMutex();
 uint16_t light_threshold = 0;
 
 enum coins{
-    EURO_2, 
-    CENT_20,
-    CENT_1,
-    NOT_RECOGNIZED
+    EURO_2 = 3, 
+    CENT_20 = 2,
+    CENT_1 = 1,
+    NOT_RECOGNIZED = 0
 };
 
 rcl_publisher_t publisher;
@@ -92,7 +92,7 @@ void vStrainGaugeRead(void * params){
             if(result > maxWeight){
                 maxWeight = result;
             }
-            //printf("w%d\n", result);
+            uart_printf("w%d\n", result);
             vTaskDelay(pdMS_TO_TICKS(5UL));
         }
         xQueueSend(classifierWeightQueue, &maxWeight, portMAX_DELAY); //?
@@ -160,20 +160,21 @@ void vClassifier(void * params) {
         xQueueReceive(classifierWeightQueue, &weight, portMAX_DELAY);
         xQueueReceive(classifierTimeQueue, &time, portMAX_DELAY);
 
-        if(time > 125){ // 2 euro
+        if (weight < 200 || time == 0) {
+            //not recognized
+            degree = 88;
+            coinValue = NOT_RECOGNIZED;
+        }
+        else if(time >= 110){ // 2 euro
             degree = 4;
             coinValue = EURO_2;
         }
-        else if(time > 90){ //20 c
+        else if(time >= 80){ //20 c
             degree = 32;
             coinValue = CENT_20;
-        }else if(time > 0){ // 1 c
+        }else { // 1 c
              degree = 60;
              coinValue = CENT_1;
-        }
-        else{ //not recognized
-            degree = 88;
-            coinValue = NOT_RECOGNIZED;
         }
 
         xQueueSend(slideServoQueue, &degree, portMAX_DELAY);
@@ -203,25 +204,27 @@ void vSender(void * params){
     }
 }
 
-void initialize_board(){
-    uint16_t base_light_value = photoresistor.getLight();
-    light_threshold = base_light_value * 0.6;
-    initialize_debug_uart();
-    sleep_ms(5000);
-}
-
 void vMainTask(void * args) {
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    gpio_put(25, 0);
+
     rcl_allocator_t allocator = rcl_get_default_allocator();
 	rclc_support_t support;
 
 	// create init options
 	rcl_init_options_t init_options = rcl_get_zero_initialized_init_options();
 	RCCHECK(rcl_init_options_init(&init_options, allocator));
-	RCCHECK(rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator));
+    RCCHECK(rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator));
 	
 	// create node
 	rcl_node_t node;
-	RCCHECK(rclc_node_init_default(&node, "publisher_node", "", &support));
+    rcl_ret_t rc = rclc_node_init_default(&node, "publisher_node", "", &support);
+    if (rc != RCL_RET_OK) {
+        uart_printf("Node init failed: %d : %s\n", (int)rc, rcl_get_error_string().str);
+        rcl_reset_error();
+        vTaskDelete(NULL);
+    }
+	//RCCHECK(rclc_node_init_default(&node, "publisher_node", "", &support));
 
 	// create publisher
 	RCCHECK(rclc_publisher_init_default(
@@ -238,16 +241,16 @@ void vMainTask(void * args) {
     TaskHandle_t tSlideServo;
     TaskHandle_t tSender;
     
-    xTaskCreate(vPhotoresistorRead, "Entry section photoresistor's read", 1024, NULL, 2, &tPhotoresistor);
-    xTaskCreate(vBladeServoAction, "Entry section blade's action", 1024, NULL, 2, &tBladeServo);
-    xTaskCreate(vStrainGaugeRead, "Strain gauge's read", 1024, NULL, 3, &tStrainGauge);
-    xTaskCreate(vLM393CoupleRead, "LM393 couple's read", 1024, NULL, 4, &tLM393Couple);
-    xTaskCreate(vClassifier, "Classifier", 1024, NULL, 3, &tClassifier);
-    xTaskCreate(vSlideServoAction, "Final section slide's action", 1024, NULL, 3, &tSlideServo);
-    xTaskCreate(vSender, "Data sender", 1024, NULL, 1, &tSender);
+    xTaskCreate(vPhotoresistorRead, "Entry section photoresistor's read", 1024, NULL, 3, &tPhotoresistor);
+    xTaskCreate(vBladeServoAction, "Entry section blade's action", 1024, NULL, 3, &tBladeServo);
+    xTaskCreate(vStrainGaugeRead, "Strain gauge's read", 1024, NULL, 4, &tStrainGauge);
+    xTaskCreate(vLM393CoupleRead, "LM393 couple's read", 1024, NULL, 5, &tLM393Couple);
+    xTaskCreate(vClassifier, "Classifier", 1024, NULL, 4, &tClassifier);
+    xTaskCreate(vSlideServoAction, "Final section slide's action", 1024, NULL, 4, &tSlideServo);
+    xTaskCreate(vSender, "Data sender", 1024, NULL, 2, &tSender);
 
     while(1){
-        vTaskDelay(pdMS_TO_TICKS(10));  // Yield to other tasks
+        vTaskDelay(pdMS_TO_TICKS(10000));  // Yield to other tasks
 	}
 
 	// free resources
@@ -259,18 +262,22 @@ void vMainTask(void * args) {
 }
 
 int main(){
-    initialize_board();
-    uart_printf("Between initializations\n");
+    gpio_init(25);
+    gpio_set_dir(25, GPIO_OUT);
+    gpio_put(25, 1);
+    uint16_t base_light_value = photoresistor.getLight();
+    light_threshold = base_light_value * 0.6;
+    initialize_debug_uart();
 
     rmw_uros_set_custom_transport(
 		true,
 		NULL,
-		pico_serial_transport_open,
-		pico_serial_transport_close,
-		pico_serial_transport_write,
-		pico_serial_transport_read
+		pico_usb_transport_open,
+		pico_usb_transport_close,
+		pico_usb_transport_write,
+		pico_usb_transport_read
 	);
-    
+
     TaskHandle_t mainTask;
 
     xTaskCreate(vMainTask, "Main Task", 5000, NULL, 1, &mainTask);
