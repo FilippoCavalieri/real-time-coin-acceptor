@@ -35,7 +35,7 @@ echo "export PICO_SDK_PATH=$HOME/pico-sdk" >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### 2. build Micro-ROS agent (first time only)
+### 2. Build Micro-ROS agent (first time only)
 Micro-ROS uses a client-server architecture, so you must start the Micro-ROS Agent before.
 
 ```bash
@@ -101,7 +101,7 @@ source install/local_setup.bash
 ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyACM0
 ```
 
-### check published messages
+#### Check published messages
 ```bash
 ros2 topic list
 /coinValuePublisher
