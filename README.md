@@ -1,10 +1,15 @@
 
-# microROS workspace with FreeRTOS for  Raspberry Pi Pico SDK
+# Real-Time Coin Acceptor
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](http://unlicense.org/)
+
+A real-time coin acceptor powered by a Raspberry Pi Pico shipped with FreeRTOS and Micro-ROS.  
+This project includes:
+- C++ code for Raspberry Pi Pico
+- calibration utilities written in Python
+- Python frontend of the coin acceptor
 
 ## Dependencies
-
 
 ### 0. Configure Groups
 ``` bash
@@ -15,7 +20,7 @@ sudo usermod -a -G dialout $USER
 # To mount PICO without sudo
 echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="2e8a", ATTR{idProduct}=="0003", MODE="0660", GROUP="plugdev"' | sudo tee /etc/udev/rules.d/99-rpi-pico.rules > /dev/null
 ```
-(reboot your system after)
+(Reboot your system afterward.)
 
 ### 1. Install Pico SDK
 First, make sure the Pico SDK is properly installed and configured:
@@ -30,8 +35,8 @@ echo "export PICO_SDK_PATH=$HOME/pico-sdk" >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### 2. build microROS agent (first time only)
-Micro-ROS follows the client-server architecture, so you need to start the Micro-ROS Agent.
+### 2. build Micro-ROS agent (first time only)
+Micro-ROS uses a client-server architecture, so you must start the Micro-ROS Agent before.
 
 ```bash
 # Create a workspace and download the micro-ROS tools
@@ -59,33 +64,36 @@ ros2 run micro_ros_setup build_agent.sh
 
 ### 3. Clone this repository
 
-Recursively clone the appropriate branch for your ROS2 distribution, this repo include support for `jazzy`, `humble` and `galactic`.
+Clone the repository recursively.
 ```bash
-git clone --recursive -b $ROS_DISTRO https://github.com/cscribano/RTES_freertos_PICO.git
+git clone --recursive https://github.com/FilippoCavalieri/real-time-coin-acceptor
 ```
 
-## Running Examples
+> [!WARNING]
+> **ONLY** `jazzy` ROS distribution is supported
 
-#### Build all the examples
+## Running project
+
+#### Build
 
 ```bash
-cd RTES_freertos_PICO
+cd real-time-coin-acceptor
 mkdir build
 cd build
 cmake ..
 make
 ```
 
-#### Flash an example
+#### Flash
 
-To flash (example 01_executor_pub) hold the boot button, plug the USB and run:
+To flash the device, hold the boot button, plug in the USB, and run:
 ```bash
-cp 01_executor_pub.uf2 $(findmnt -rn -o TARGET -S LABEL=RPI-RP2)/
+cp coin_acceptor_microros.uf2 $(findmnt -rn -o TARGET -S LABEL=RPI-RP2)/
 ```
 
 #### Run micro ROS agent
 ```bash
-# Rource workspace
+# Source workspace
 cd microros_ws
 source install/local_setup.bash
 
@@ -96,41 +104,16 @@ ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyACM0
 ### check published messages
 ```bash
 ros2 topic list
-/int32_publisher_main
+/coinValuePublisher
 /parameter_events
 /rosout
 
-ros2 topic echo int32_publisher_main
-data: 28
+ros2 topic echo /coinValuePublisher
+data: 0
 ---
-data: 29
+data: 1
 ---
-data: 30
+data: 2
 ---
 .....
 ```
-
-## How to use Pico SDK?
-
-Here is a Raspberry Pi Pico C/C++ SDK documentation:
-https://datasheets.raspberrypi.org/pico/raspberry-pi-pico-c-sdk.pdf
-
-## How to build the precompiled library (ADVANCED)
-
-Micro-ROS is precompiled for Raspberry Pi Pico in [`libmicroros`](libmicroros).
-If you want to compile it by yourself:
-
-```bash
-docker pull microros/micro_ros_static_library_builder:jazzy
-docker run -it --rm -v $(pwd):/project microros/micro_ros_static_library_builder:jazzy
-```
-
-## License
-
-This repository is open-sourced under the Apache-2.0 license. See the [LICENSE](LICENSE) file for details. The content of this repository is derived from [micro_ros_raspberrypi_pico_sdk](https://github.com/micro-ROS/micro_ros_raspberrypi_pico_sdk.git).
-
-For a list of other open-source components included in this repository,
-see the file [3rd-party-licenses.txt](3rd-party-licenses.txt).
-
-## Notes
- This package is released for teaching and educational purposes only.
