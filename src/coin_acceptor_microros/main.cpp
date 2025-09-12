@@ -29,6 +29,9 @@ extern "C" {
 #define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){uart_printf("Failed status on line %d: %d. Aborting.\n",__LINE__,(int)temp_rc);vTaskDelete(NULL);}}
 #define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){uart_printf("Failed status on line %d: %d. Continuing.\n",__LINE__,(int)temp_rc);}}
 
+/**
+ * Maximum time spent waiting for the coin passage through the photocouplers.
+ */
 #define CHANNEL_TIMEOUT pdMS_TO_TICKS(600)
 
 PhotoresistorSensor photoresistor(26);
@@ -49,7 +52,7 @@ QueueHandle_t senderQueue = xQueueCreate(1, sizeof(uint16_t));
 bool stopStrainGauge = false;
 SemaphoreHandle_t stopStrainGaugeMutex = xSemaphoreCreateMutex();
 
-uint16_t light_threshold = 0;
+uint16_t lightThreshold = 0;
 
 enum coins{
     EURO_2 = 3, 
@@ -60,26 +63,26 @@ enum coins{
 
 rcl_publisher_t publisher;
 
+// photoresistor read task
 void vPhotoresistorRead(void * params){
     for(;;){
         uint16_t result = photoresistor.getLight();
-        //printf("PHOTORESISTOR: Read value: %d\n", result, result);
-        if(result < light_threshold){
-            vTaskDelay(pdMS_TO_TICKS(500UL)); //wait for coin lay on the blade
+        if(result < lightThreshold){
+            vTaskDelay(pdMS_TO_TICKS(500UL)); // wait for coin laying on the blade
             xSemaphoreGive(strainGaugeSynchSem);
             xSemaphoreGive(LM393CoupleSynchSem);
             xSemaphoreGive(bladeServoSynchSem);
-            vTaskDelay(pdMS_TO_TICKS(500UL)); //wait for coin fall down
+            vTaskDelay(pdMS_TO_TICKS(500UL)); // wait for coin falling down
         }
         vTaskDelay(pdMS_TO_TICKS(100UL));
     }
 }
 
+// strain gauge read task
 void vStrainGaugeRead(void * params){
     uint16_t maxWeight = 0;
     for(;;){
         xSemaphoreTake(strainGaugeSynchSem, portMAX_DELAY);
-        //printf("STRAIN GAUGE: start\n");
         for(;;){
             xSemaphoreTake(stopStrainGaugeMutex, portMAX_DELAY);
             if(stopStrainGauge){
@@ -92,87 +95,78 @@ void vStrainGaugeRead(void * params){
             if(result > maxWeight){
                 maxWeight = result;
             }
-            uart_printf("w%d\n", result);
+            uart_printf("w%d\n", result); // used for calibration
             vTaskDelay(pdMS_TO_TICKS(5UL));
         }
-        xQueueSend(classifierWeightQueue, &maxWeight, portMAX_DELAY); //?
-        //printf("STRAIN GAUGE: stop\n");
+        xQueueSend(classifierWeightQueue, &maxWeight, portMAX_DELAY);
     }
 }
 
-void dimensionSensorCalibration(){
-
-}
-
+// photocoupler read task
 void vLM393CoupleRead(void * params){
-    TickType_t channelStartTime, channelDuration, overlapStartTime, overlapDuration = 0;
+    TickType_t channelStartTime, channelDuration, overlapStartTime, overlapDuration;
     bool result = false;
     for(;;){
         xSemaphoreTake(LM393CoupleSynchSem, portMAX_DELAY);
+        // new coin in the channel
         channelStartTime = xTaskGetTickCount();
         channelDuration = 0;
+        overlapDuration = 0;
         while(!result && channelDuration < CHANNEL_TIMEOUT) {
             result = LM393Couple.getOverlap();
             channelDuration = xTaskGetTickCount() - channelStartTime;
             vTaskDelay(pdMS_TO_TICKS(1UL));
         }
-        overlapStartTime = xTaskGetTickCount();
-        //printf("DIMENSION SENSOR: overlap\n");
+        // stop strain gauge task
         xSemaphoreTake(stopStrainGaugeMutex, portMAX_DELAY);
         stopStrainGauge = true;
         xSemaphoreGive(stopStrainGaugeMutex);
-        while(result){
-            result = LM393Couple.getOverlap();
-            vTaskDelay(pdMS_TO_TICKS(1UL));
+        if (channelDuration < CHANNEL_TIMEOUT) {
+            // start overlap
+            overlapStartTime = xTaskGetTickCount();
+            while(result){
+                result = LM393Couple.getOverlap();
+                vTaskDelay(pdMS_TO_TICKS(1UL));
+            }
+            // end overlap
+            overlapDuration = xTaskGetTickCount() - overlapStartTime;
         }
-        //printf("DIMENSION SENSOR: no overlap\n");
-        overlapDuration = xTaskGetTickCount() - overlapStartTime;
         xQueueSend(classifierTimeQueue, &overlapDuration, portMAX_DELAY);
-        if(channelDuration >= CHANNEL_TIMEOUT ){ //Overlap doesn't occur
-            uart_printf("t0\n");
-            //printf("t0\n");
-        }else if(overlapDuration <= 10){ //Swings occur
-            uart_printf("t-100\n");
-            //printf("t-100\n");
-        }
-        else{
-            uart_printf("t%d\n", overlapDuration);
-            //printf("t%u\n", overlapDuration);
-        }
-        uart_printf("c%d\n",channelDuration);
-        //printf("c%u\n", channelDuration);
+        uart_printf("t%d\n", overlapDuration); // used for calibration
+        uart_printf("c%d\n",channelDuration); // used for calibration
     }
 }
 
+// blade actuation task
 void vBladeServoAction(void * params){
     for(;;){
         bladeServo.goDegree(90);
         xSemaphoreTake(bladeServoSynchSem, portMAX_DELAY);
-        printf("ACTION\n");
         bladeServo.goDegree(135);
         vTaskDelay(pdMS_TO_TICKS(100UL));
     }  
 }
 
+// classifier task
 void vClassifier(void * params) {
     uint16_t weight, time, degree, coinValue;
     for(;;){
         xQueueReceive(classifierWeightQueue, &weight, portMAX_DELAY);
         xQueueReceive(classifierTimeQueue, &time, portMAX_DELAY);
 
+        // the thresholds have been found through calibration (see calibration/result folder)
         if (weight < 200 || time == 0) {
-            //not recognized
             degree = 88;
             coinValue = NOT_RECOGNIZED;
         }
-        else if(time >= 110){ // 2 euro
+        else if(time >= 110){
             degree = 4;
             coinValue = EURO_2;
         }
-        else if(time >= 80){ //20 c
+        else if(time >= 80){
             degree = 32;
             coinValue = CENT_20;
-        }else { // 1 c
+        }else {
              degree = 60;
              coinValue = CENT_1;
         }
@@ -183,6 +177,7 @@ void vClassifier(void * params) {
     
 }
 
+// slide actuation task
 void vSlideServoAction(void * params){
     uint16_t degree;
     slideServo.goDegree(4);
@@ -192,21 +187,27 @@ void vSlideServoAction(void * params){
     }
 }
 
+// microROS publisher task
 void vSender(void * params){
     uint16_t coinValue;
     std_msgs__msg__Int32 msg;
     msg.data = 0;
     for(;;){
-        uart_printf("INSERTED COIN: %d\n", coinValue);
         xQueueReceive(senderQueue, &coinValue, portMAX_DELAY);
+        uart_printf("INSERTED COIN: %d\n", coinValue);
         msg.data = coinValue;
         RCSOFTCHECK(rcl_publish(&publisher, &msg, NULL));
     }
 }
 
+/**
+ * @brief Main Task
+ * This task has an extended stack and is responsible for tasks instantiation.
+ * This task because sleep_ms function cannot be used.
+ * @param args 
+ */
 void vMainTask(void * args) {
     vTaskDelay(pdMS_TO_TICKS(5000));
-    gpio_put(25, 0);
 
     rcl_allocator_t allocator = rcl_get_default_allocator();
 	rclc_support_t support;
@@ -224,7 +225,6 @@ void vMainTask(void * args) {
         rcl_reset_error();
         vTaskDelete(NULL);
     }
-	//RCCHECK(rclc_node_init_default(&node, "publisher_node", "", &support));
 
 	// create publisher
 	RCCHECK(rclc_publisher_init_default(
@@ -249,24 +249,15 @@ void vMainTask(void * args) {
     xTaskCreate(vSlideServoAction, "Final section slide's action", 1024, NULL, 4, &tSlideServo);
     xTaskCreate(vSender, "Data sender", 1024, NULL, 2, &tSender);
 
-    while(1){
+    // stop task indefinitely
+    for(;;){
         vTaskDelay(pdMS_TO_TICKS(10000));  // Yield to other tasks
 	}
-
-	// free resources
-	RCCHECK(rcl_publisher_fini(&publisher, &node));
-
-	RCCHECK(rcl_node_fini(&node));
-
-  	vTaskDelete(NULL);
 }
 
 int main(){
-    gpio_init(25);
-    gpio_set_dir(25, GPIO_OUT);
-    gpio_put(25, 1);
-    uint16_t base_light_value = photoresistor.getLight();
-    light_threshold = base_light_value * 0.6;
+    uint16_t baseLightValue = photoresistor.getLight();
+    lightThreshold = baseLightValue * 0.6;
     initialize_debug_uart();
 
     rmw_uros_set_custom_transport(
@@ -284,13 +275,6 @@ int main(){
     // Bind the task to a single core
 	vTaskCoreAffinitySet(mainTask, 1);
     
-    //vTaskCoreAffinitySet(tStrainGauge,1);
-    //vTaskCoreAffinitySet(tLM393Couple,2);
-    //vTaskCoreAffinitySet(tBladeServo,3);
-    //vTaskCoreAffinitySet(tPhotoresistor,2);
-    
-
-
     vTaskStartScheduler();
     return 0;
 }

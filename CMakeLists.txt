@@ -31,13 +31,5 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -finline-functions -O2")
 link_directories(libmicroros)
 
 # Add student/common modules
-add_subdirectory(apps/common)
-#add_subdirectory(apps/01_executor_pub)
-#add_subdirectory(apps/02_multithread_pub)
-#add_subdirectory(apps/04_pubsub)
-#add_subdirectory(apps/05_isr_pub)
-add_subdirectory(apps/06_sensor_pub)
-#add_subdirectory(apps/07_cartpole)
-
-add_subdirectory(apps/coin_acceptor_noros)
-add_subdirectory(apps/coin_acceptor_microros)
+add_subdirectory(src/common)
+add_subdirectory(src/coin_acceptor_microros)

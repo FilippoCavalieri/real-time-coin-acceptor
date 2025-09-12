@@ -3,16 +3,25 @@
 
 #include "pico/stdlib.h"
 
+/**
+ * @brief Servomotor class
+ */
 class ServoActuator {
 	private:
+		/**
+		 * @brief GPIO pin of the servomotor
+		 */
 		uint8_t xGP;
 
 	public:
+		/**
+		 * @param gp GPIO pin of the servomotor
+		 */
 		ServoActuator(uint8_t gp);
 		virtual ~ServoActuator();
 		/**
-		 * move to angle degree (between 0 and 180).
-		 * @param degree
+		 * @brief move to angle degree (between 0 and 180).
+		 * @param degree angle to get to
 		 */
 		void goDegree(float degree);
 };
